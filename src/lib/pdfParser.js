@@ -1,5 +1,16 @@
 import * as pdfjsLib from "pdfjs-dist";
 
+// iPadOS/iOS (Safari and Chrome-on-iOS, which is WebKit underneath too)
+// creates the module Worker without throwing, but it never actually
+// responds - getDocument() just hangs. Desktop/Android browsers don't have
+// this problem, so only iOS needs the main-thread fallback below.
+function isIOSLike() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const isIPadOS13Plus = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  return /iPad|iPhone|iPod/.test(ua) || isIPadOS13Plus;
+}
+
 // We create the Worker ourselves (Vite's officially-supported pattern for
 // bundling workers) and hand it to pdf.js as a `port`, instead of giving
 // pdf.js a `workerSrc` URL string and letting it create the Worker
@@ -7,10 +18,18 @@ import * as pdfjsLib from "pdfjs-dist";
 // for when a real Worker can't be made, but that fallback dynamically
 // import()s the same URL and reads a named export off it - and Vite's
 // worker-chunk build strips that export, so the fallback itself throws
-// (this is what broke uploads on iPadOS). Wiring up our own Worker sidesteps
-// that fragile path entirely. A fresh one is made per parse call since a
-// PDFWorker can't share a port with another PDFWorker.
-function createPdfWorker() {
+// instead of falling back cleanly. Wiring up our own Worker sidesteps that
+// fragile path - but on iOS, we skip the real Worker entirely (it silently
+// never responds there) and run pdf.js on the main thread instead: we
+// import the same polyfilled module normally (not through Vite's `?worker`
+// pipeline, so its exports/side effects survive), which sets
+// `globalThis.pdfjsWorker` - pdf.js checks for that before ever trying to
+// create a real Worker, so it goes straight to (working) main-thread mode.
+async function createPdfWorker() {
+  if (isIOSLike()) {
+    await import("./pdfWorkerEntry.js");
+    return null;
+  }
   const port = new Worker(new URL("./pdfWorkerEntry.js", import.meta.url), {
     type: "module",
   });
@@ -153,10 +172,12 @@ function withTimeout(promise, ms, message) {
 export async function parsePdf(file, onProgress = () => {}) {
   const arrayBuffer = await file.arrayBuffer();
   onProgress("Menyiapkan pemroses PDF...");
-  const worker = createPdfWorker();
+  const worker = await createPdfWorker(); // null on iOS - main-thread fallback
+
+  let pdf;
   try {
-    const pdf = await withTimeout(
-      pdfjsLib.getDocument({ data: arrayBuffer, worker }).promise,
+    pdf = await withTimeout(
+      pdfjsLib.getDocument({ data: arrayBuffer, ...(worker ? { worker } : {}) }).promise,
       30000,
       "Gagal memuat PDF: proses tidak merespons. Coba muat ulang halaman dan unggah lagi, atau coba dengan file yang lebih kecil."
     );
@@ -180,6 +201,7 @@ export async function parsePdf(file, onProgress = () => {}) {
     }
     return allLines;
   } finally {
-    worker.destroy();
+    if (worker) worker.destroy();
+    pdf?.destroy();
   }
 }
