@@ -1,5 +1,13 @@
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "./pdfWorkerEntry.js?worker&url";
+// Also load the worker module directly on the main thread (this is a no-op
+// for setting up message handling there - the module itself only does that
+// when `window` is undefined, i.e. inside a real worker). It still runs the
+// unconditional `globalThis.pdfjsWorker = { WorkerMessageHandler }` line
+// though, which is what pdf.js's fake-worker fallback checks FIRST - before
+// it ever tries (and, on some browsers such as iPadOS Safari, fails) to
+// `import()` the worker URL itself to read that same export off it.
+import "./pdfWorkerEntry.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
