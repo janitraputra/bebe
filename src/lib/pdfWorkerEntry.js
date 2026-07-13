@@ -18,4 +18,4 @@ if (typeof Promise.withResolvers !== "function") {
 // resulting module namespace when a real Worker isn't usable - still finds
 // what it expects. A bare side-effect import leaves that export missing,
 // which is what broke the fallback on iPadOS.
-export * from "pdfjs-dist/build/pdf.worker.mjs";
+export { WorkerMessageHandler } from "pdfjs-dist/build/pdf.worker.mjs";

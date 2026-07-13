@@ -1,15 +1,21 @@
 import * as pdfjsLib from "pdfjs-dist";
-import pdfWorkerUrl from "./pdfWorkerEntry.js?worker&url";
-// Also load the worker module directly on the main thread (this is a no-op
-// for setting up message handling there - the module itself only does that
-// when `window` is undefined, i.e. inside a real worker). It still runs the
-// unconditional `globalThis.pdfjsWorker = { WorkerMessageHandler }` line
-// though, which is what pdf.js's fake-worker fallback checks FIRST - before
-// it ever tries (and, on some browsers such as iPadOS Safari, fails) to
-// `import()` the worker URL itself to read that same export off it.
-import "./pdfWorkerEntry.js";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+// We create the Worker ourselves (Vite's officially-supported pattern for
+// bundling workers) and hand it to pdf.js as a `port`, instead of giving
+// pdf.js a `workerSrc` URL string and letting it create the Worker
+// internally. pdf.js's own internal creation path has an automatic fallback
+// for when a real Worker can't be made, but that fallback dynamically
+// import()s the same URL and reads a named export off it - and Vite's
+// worker-chunk build strips that export, so the fallback itself throws
+// (this is what broke uploads on iPadOS). Wiring up our own Worker sidesteps
+// that fragile path entirely. A fresh one is made per parse call since a
+// PDFWorker can't share a port with another PDFWorker.
+function createPdfWorker() {
+  const port = new Worker(new URL("./pdfWorkerEntry.js", import.meta.url), {
+    type: "module",
+  });
+  return new pdfjsLib.PDFWorker({ port });
+}
 
 // Highlights show up in two very different ways depending on how the PDF was
 // produced:
@@ -126,20 +132,24 @@ function groupIntoLines(items, viewport, pixelInfo) {
 // an array of { segments: [{text, highlighted}], blank } objects.
 export async function parsePdf(file) {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdf = await loadingTask.promise;
+  const worker = createPdfWorker();
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, worker }).promise;
 
-  const allLines = [];
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2 });
-    const [pixelInfo, textContent] = await Promise.all([
-      renderPageToPixels(page, viewport),
-      page.getTextContent(),
-    ]);
-    const lines = groupIntoLines(textContent.items, viewport, pixelInfo);
-    allLines.push(...lines);
-    allLines.push({ segments: [], blank: true }); // page break separator
+    const allLines = [];
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 2 });
+      const [pixelInfo, textContent] = await Promise.all([
+        renderPageToPixels(page, viewport),
+        page.getTextContent(),
+      ]);
+      const lines = groupIntoLines(textContent.items, viewport, pixelInfo);
+      allLines.push(...lines);
+      allLines.push({ segments: [], blank: true }); // page break separator
+    }
+    return allLines;
+  } finally {
+    worker.destroy();
   }
-  return allLines;
 }
