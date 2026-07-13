@@ -25,6 +25,7 @@ function createPdfWorker() {
 //     highlighted text to PDF - there's no annotation object at all).
 // Rather than special-case both, we render the page to a canvas (which
 // composites annotations + page content exactly like a PDF viewer would)
+
 // and then sample the pixel color behind each word. Any patch of saturated,
 // non-white, non-black color behind a word means it's highlighted -
 // regardless of which mechanism produced it or what color was used.
@@ -72,12 +73,19 @@ function itemToPdfRect(item) {
 
 async function renderPageToPixels(page, viewport) {
   const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
+  const width = Math.ceil(viewport.width);
+  const height = Math.ceil(viewport.height);
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   await page.render({ canvasContext: ctx, viewport }).promise;
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  return { pixels: imageData.data, width: canvas.width, height: canvas.height };
+  const imageData = ctx.getImageData(0, 0, width, height);
+  // Free the canvas backing store promptly - large documents render many of
+  // these in a row, and low-memory devices (e.g. iPads) can struggle if they
+  // pile up before garbage collection catches up.
+  canvas.width = 0;
+  canvas.height = 0;
+  return { pixels: imageData.data, width, height };
 }
 
 // Groups text items into visual lines by rounding their baseline Y,
@@ -128,18 +136,39 @@ function groupIntoLines(items, viewport, pixelInfo) {
   return lines;
 }
 
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // Parses a PDF File/Blob into the same "lines" shape docxParser produces:
 // an array of { segments: [{text, highlighted}], blank } objects.
-export async function parsePdf(file) {
+// `onProgress(status)` is called with short human-readable status strings so
+// slow devices (this renders every page to a canvas to detect highlighter
+// color, which is memory/CPU heavy) can show real progress instead of
+// looking frozen.
+export async function parsePdf(file, onProgress = () => {}) {
   const arrayBuffer = await file.arrayBuffer();
+  onProgress("Menyiapkan pemroses PDF...");
   const worker = createPdfWorker();
   try {
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, worker }).promise;
+    const pdf = await withTimeout(
+      pdfjsLib.getDocument({ data: arrayBuffer, worker }).promise,
+      30000,
+      "Gagal memuat PDF: proses tidak merespons. Coba muat ulang halaman dan unggah lagi, atau coba dengan file yang lebih kecil."
+    );
 
     const allLines = [];
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      onProgress(`Memproses halaman ${pageNum} dari ${pdf.numPages}...`);
       const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 2 });
+      // A lower render scale keeps memory/CPU cost down on weaker devices
+      // (e.g. iPads) - we only need enough resolution to reliably tell
+      // highlighted text from plain text, not sharp visual quality.
+      const viewport = page.getViewport({ scale: 1.25 });
       const [pixelInfo, textContent] = await Promise.all([
         renderPageToPixels(page, viewport),
         page.getTextContent(),
@@ -147,6 +176,7 @@ export async function parsePdf(file) {
       const lines = groupIntoLines(textContent.items, viewport, pixelInfo);
       allLines.push(...lines);
       allLines.push({ segments: [], blank: true }); // page break separator
+      page.cleanup();
     }
     return allLines;
   } finally {

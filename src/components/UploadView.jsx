@@ -4,6 +4,7 @@ import { saveQuiz } from "../lib/storage";
 
 export default function UploadView({ onQuizSaved }) {
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null); // { warnings, count }
   const fileInputRef = useRef(null);
@@ -12,12 +13,13 @@ export default function UploadView({ onQuizSaved }) {
     setBusy(true);
     setError(null);
     setResult(null);
+    setStatus("Membaca file...");
     try {
       const ext = file.name.toLowerCase().split(".").pop();
       let lines;
       if (ext === "pdf") {
         const { parsePdf } = await import("../lib/pdfParser");
-        lines = await parsePdf(file);
+        lines = await parsePdf(file, setStatus);
       } else if (ext === "docx") {
         const { parseDocx } = await import("../lib/docxParser");
         lines = await parseDocx(file);
@@ -45,6 +47,7 @@ export default function UploadView({ onQuizSaved }) {
       setError(err.message || "Gagal memproses file.");
     } finally {
       setBusy(false);
+      setStatus("");
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -80,7 +83,7 @@ export default function UploadView({ onQuizSaved }) {
         {busy ? (
           <>
             <span className="spinner" />
-            Memproses file...
+            {status || "Memproses file..."}
           </>
         ) : (
           <>
