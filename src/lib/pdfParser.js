@@ -179,6 +179,15 @@ function withTimeout(promise, ms, message) {
 // slow devices (this renders every page to a canvas to detect highlighter
 // color, which is memory/CPU heavy) can show real progress instead of
 // looking frozen.
+// pdfjs-dist ships cmap/standard-font/wasm/icc resources it needs for PDFs
+// using non-embedded fonts or certain image codecs; without an explicit
+// path it guesses a default that doesn't exist on our deployment (a
+// GitHub Pages project site under a /bebe/ subpath), and on at least
+// Safari/WebKit that missing-resource fetch appears to hang the whole
+// document load rather than failing fast. These are copied into public/
+// (see public/pdfjs/) at their exact pdfjs-dist versions.
+const PDFJS_ASSET_BASE = `${import.meta.env.BASE_URL}pdfjs/`;
+
 export async function parsePdf(file, onProgress = () => {}) {
   const arrayBuffer = await file.arrayBuffer();
   onProgress("Menyiapkan pemroses PDF...");
@@ -187,7 +196,15 @@ export async function parsePdf(file, onProgress = () => {}) {
   let pdf;
   try {
     pdf = await withTimeout(
-      pdfjsLib.getDocument({ data: arrayBuffer, ...(worker ? { worker } : {}) }).promise,
+      pdfjsLib.getDocument({
+        data: arrayBuffer,
+        cMapUrl: `${PDFJS_ASSET_BASE}cmaps/`,
+        cMapPacked: true,
+        standardFontDataUrl: `${PDFJS_ASSET_BASE}standard_fonts/`,
+        wasmUrl: `${PDFJS_ASSET_BASE}wasm/`,
+        iccUrl: `${PDFJS_ASSET_BASE}iccs/`,
+        ...(worker ? { worker } : {}),
+      }).promise,
       30000,
       "Gagal memuat PDF: proses tidak merespons. Coba muat ulang halaman dan unggah lagi, atau coba dengan file yang lebih kecil."
     );
