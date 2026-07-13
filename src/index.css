@@ -1,0 +1,124 @@
+:root {
+  --pink-50: #fff5f9;
+  --pink-100: #ffe4f0;
+  --pink-200: #ffc9e3;
+  --pink-300: #ff9ecf;
+  --pink-400: #ff6fb8;
+  --pink-500: #f5439e;
+  --pink-600: #d92a82;
+
+  --text: #6b4a5c;
+  --text-h: #4a2a3d;
+  --bg: var(--pink-50);
+  --border: var(--pink-200);
+  --accent: var(--pink-500);
+  --accent-hover: var(--pink-600);
+  --accent-bg: var(--pink-100);
+  --card-bg: #ffffff;
+  --ok: #2fb380;
+  --ok-bg: rgba(47, 179, 128, 0.12);
+  --bad: #ef4d6f;
+  --bad-bg: rgba(239, 77, 111, 0.1);
+  --shadow: rgba(245, 67, 158, 0.14) 0 8px 24px;
+
+  --sans: "Nunito", system-ui, "Segoe UI", Roboto, sans-serif;
+  --display: "Baloo 2", var(--sans);
+
+  font: 16px/150% var(--sans);
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background:
+    radial-gradient(circle at 8% 8%, var(--pink-100) 0%, transparent 38%),
+    radial-gradient(circle at 95% 15%, var(--pink-100) 0%, transparent 32%),
+    radial-gradient(circle at 90% 92%, var(--pink-100) 0%, transparent 40%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+h1, h2 {
+  font-family: var(--display);
+  color: var(--text-h);
+  font-weight: 700;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--pink-300);
+  color: white;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--pink-200);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bump {
+  0%, 100% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  60% { transform: scale(0.95); }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-6px); }
+  40%, 60% { transform: translateX(6px); }
+}
+
+@keyframes pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+@keyframes confettiPop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1) rotate(var(--rot));
+    opacity: 0;
+  }
+}
