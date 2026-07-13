@@ -30,14 +30,21 @@ function pickVoice(lang) {
 
 export function speak(text, { lang = "id-ID", rate = 0.8, pitch = 1 } = {}) {
   if (!isTtsSupported() || !text) return;
-  window.speechSynthesis.cancel(); // stop anything currently playing
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = lang;
-  utter.rate = rate;
-  utter.pitch = pitch;
-  const voice = pickVoice(lang);
-  if (voice) utter.voice = voice;
-  window.speechSynthesis.speak(utter);
+  // Some browsers (notably certain Safari versions) can throw synchronously
+  // here. Callers use this for non-critical voice feedback, so a failure
+  // must never break the caller's own logic (e.g. scoring, navigation).
+  try {
+    window.speechSynthesis.cancel(); // stop anything currently playing
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang;
+    utter.rate = rate;
+    utter.pitch = pitch;
+    const voice = pickVoice(lang);
+    if (voice) utter.voice = voice;
+    window.speechSynthesis.speak(utter);
+  } catch {
+    // ignore - voice feedback is a nice-to-have, not a requirement
+  }
 }
 
 export function stopSpeaking() {
