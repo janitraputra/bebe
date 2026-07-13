@@ -4,11 +4,21 @@ import * as pdfjsLib from "pdfjs-dist";
 // creates the module Worker without throwing, but it never actually
 // responds - getDocument() just hangs. Desktop/Android browsers don't have
 // this problem, so only iOS needs the main-thread fallback below.
-function isIOSLike() {
+function needsMainThreadFallback() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
-  const isIPadOS13Plus = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-  return /iPad|iPhone|iPod/.test(ua) || isIPadOS13Plus;
+  // Any browser on iOS/iPadOS is WebKit underneath (Apple requires it, so
+  // even Chrome/CriOS on an iPhone or iPad has the same worker problem).
+  // iPadOS 13+ reports as "Macintosh" in its UA, distinguished from a real
+  // Mac by touch support.
+  const isIOSDevice = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOSDevice) return true;
+  // On desktop, only genuine Safari uses WebKit - Chrome/Edge/etc. on a Mac
+  // include "Safari" in their UA too (for legacy compat) but also mention
+  // their real engine, so exclude those.
+  const isChromiumFamily = /Chrome|Chromium|CriOS|Edg|OPR/.test(ua);
+  const mentionsSafari = /Safari/.test(ua);
+  return mentionsSafari && !isChromiumFamily;
 }
 
 // We create the Worker ourselves (Vite's officially-supported pattern for
@@ -26,7 +36,7 @@ function isIOSLike() {
 // `globalThis.pdfjsWorker` - pdf.js checks for that before ever trying to
 // create a real Worker, so it goes straight to (working) main-thread mode.
 async function createPdfWorker() {
-  if (isIOSLike()) {
+  if (needsMainThreadFallback()) {
     await import("./pdfWorkerEntry.js");
     return null;
   }
