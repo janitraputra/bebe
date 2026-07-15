@@ -173,6 +173,17 @@ function withTimeout(promise, ms, message) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+function safeDestroy(resource) {
+  if (!resource) return;
+  if (typeof resource.destroy === "function") {
+    resource.destroy();
+  } else if (typeof resource.cleanup === "function") {
+    resource.cleanup();
+  } else if (typeof resource.terminate === "function") {
+    resource.terminate();
+  }
+}
+
 // Parses a PDF File/Blob into the same "lines" shape docxParser produces:
 // an array of { segments: [{text, highlighted}], blank } objects.
 // `onProgress(status)` is called with short human-readable status strings so
@@ -228,7 +239,7 @@ export async function parsePdf(file, onProgress = () => {}) {
     }
     return allLines;
   } finally {
-    if (worker) worker.destroy();
-    pdf?.destroy();
+    safeDestroy(worker);
+    safeDestroy(pdf);
   }
 }
