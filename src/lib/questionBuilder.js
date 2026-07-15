@@ -4,6 +4,7 @@
 
 const QUESTION_START_RE = /^\s*(?:soal\s*)?(\d{1,3})[.\)]\s*/i;
 const OPTION_START_RE = /^\s*([A-Ea-e])[.\)]\s*/;
+const EXPLICIT_ANSWER_RE = /^(?:jawaban|kunci|answer|correct|benar|solusi|solution)\b[\s:–-]*/i;
 
 function lineText(line) {
   return line.segments.map((s) => s.text).join("");
@@ -15,6 +16,23 @@ function stripQuestionPrefix(text) {
 
 function stripOptionPrefix(text) {
   return text.replace(OPTION_START_RE, "").trim();
+}
+
+function isExplicitAnswerLine(text) {
+  return EXPLICIT_ANSWER_RE.test(text.trim());
+}
+
+function parseExplicitAnswerLine(text) {
+  const cleaned = text.trim().replace(EXPLICIT_ANSWER_RE, "").trim();
+  const letterMatch = cleaned.match(/^([A-Ea-e])(?:[.)\s]|$)/);
+  if (letterMatch) {
+    return { letter: letterMatch[1].toUpperCase(), text: cleaned };
+  }
+  return { text: cleaned };
+}
+
+function dropExplicitAnswerLines(lines) {
+  return lines.filter((line) => !isExplicitAnswerLine(lineText(line)));
 }
 
 function groupLines(lines) {
@@ -70,7 +88,7 @@ function buildMultipleChoice(stemLines, optionLines) {
   };
 }
 
-function buildFillInBlank(groupLines) {
+function buildFillInBlank(groupLines, explicitAnswers = []) {
   // Flatten all segments across lines, inserting a space between lines.
   const flat = [];
   groupLines.forEach((line, idx) => {
@@ -103,9 +121,18 @@ function buildFillInBlank(groupLines) {
     }
   }
 
+  if (answers.length === 0 && explicitAnswers.length > 0) {
+    return {
+      type: "blank",
+      stem: display.trim(),
+      answers: explicitAnswers.map((a) => a.text),
+      unresolved: false,
+    };
+  }
+
   return {
     type: "blank",
-    stem: display.replace(/\s+/g, " ").trim(),
+    stem: display.trim(),
     answers,
     unresolved: answers.length === 0,
   };
@@ -117,14 +144,27 @@ export function buildQuestions(lines) {
   const warnings = [];
 
   groups.forEach((groupLines, idx) => {
-    const optionLines = groupLines.filter((l) => OPTION_START_RE.test(lineText(l)));
-    const stemLines = groupLines.filter((l) => !OPTION_START_RE.test(lineText(l)));
+    const hasHighlight = groupLines.some((line) => line.segments.some((seg) => seg.highlighted));
+    let workingLines = groupLines;
+    let explicitAnswers = [];
+
+    if (hasHighlight) {
+      workingLines = dropExplicitAnswerLines(groupLines);
+    } else {
+      explicitAnswers = groupLines
+        .filter((line) => isExplicitAnswerLine(lineText(line)))
+        .map((line) => parseExplicitAnswerLine(lineText(line)));
+      workingLines = groupLines.filter((line) => !isExplicitAnswerLine(lineText(line)));
+    }
+
+    const optionLines = workingLines.filter((l) => OPTION_START_RE.test(lineText(l)));
+    const stemLines = workingLines.filter((l) => !OPTION_START_RE.test(lineText(l)));
 
     let question;
     if (optionLines.length >= 2 && stemLines.length > 0) {
-      question = buildMultipleChoice(stemLines, optionLines);
+      question = buildMultipleChoice(stemLines, optionLines, explicitAnswers);
     } else {
-      question = buildFillInBlank(groupLines);
+      question = buildFillInBlank(workingLines, explicitAnswers);
     }
 
     if (!question.stem) return; // nothing usable
