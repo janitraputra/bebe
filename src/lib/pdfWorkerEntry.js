@@ -1,7 +1,7 @@
 // pdf.js's worker runs in its own global scope (a separate thread), so the
-// Promise.withResolvers polyfill in main.jsx never reaches it. This wrapper
-// applies the same polyfill inside the worker before loading the real
-// pdf.worker.mjs, so older Safari doesn't crash there too.
+// polyfills in main.jsx never reach it. This wrapper applies the same
+// polyfills inside the worker before loading the real pdf.worker.mjs, so
+// older Safari doesn't crash there too.
 if (typeof Promise.withResolvers !== "function") {
   Promise.withResolvers = function () {
     let resolve, reject;
@@ -10,6 +10,16 @@ if (typeof Promise.withResolvers !== "function") {
       reject = rej;
     });
     return { promise, resolve, reject };
+  };
+}
+
+if (typeof URL.parse !== "function") {
+  URL.parse = function (url, base) {
+    try {
+      return base !== undefined ? new URL(url, base) : new URL(url);
+    } catch {
+      return null;
+    }
   };
 }
 
